@@ -46,12 +46,11 @@ entity controller is
 		reset_trip_timer	: out	std_logic;
 		hold_trip_timer		: out	std_logic;
 		lcd_select		: out	std_logic
-		--timer_lcd		: in	std_logic_vector(1 downto 0)
 	);
 end entity controller;
 
 architecture behavioural of controller is
-
+								-- LCD code
 	type motor_controller_state is(	reset_state,		-- --
 					wait_for_instr_1,	-- -1
 					wait_for_instr_2,	-- -2
@@ -77,6 +76,7 @@ architecture behavioural of controller is
 
 					draai_linksom,		-- 40
 					draai_linksom_pt2,	-- 45
+					counter_steer,		-- 4A
 
 					draai_rechtsom,		-- 50
 					draai_rechtsom_pt2,	-- 55
@@ -117,6 +117,8 @@ attribute clock_signal of motor_l_direction : signal is "yes";
 attribute clock_signal of motor_r_direction : signal is "yes";
 
 signal rechtdoor_c, linksom_c, rechtsom_c, achteruit_c, afsnijden_c, one_8ty_c, instr, mine_c, cp_c : boolean;
+
+constant turn_offset: integer := 30;
 
 begin	
 	--Functie bepaalt boolean waardes aan te hand van instructie.
@@ -186,8 +188,8 @@ begin
 	
 	procedure send_clear_instr(sort : in message) is
 	begin
-		case sort is
-			when dont_care =>
+		case sort is							-- procedure voor verzenden informatie en clearing instr flag
+			when dont_care =>					-- hex code
 				send_instr_next <= '0';
 				clr_instr_next <= '0';
 				instr_next <= "--------";
@@ -216,7 +218,7 @@ begin
 
 	procedure robot_direction (sort : in motor_status) is
 	begin
-		case sort is
+		case sort is							-- procedure voor motor aansturing
 			when vooruit =>
 				motor_l_direction <= '1';
 				motor_r_direction <= '0';
@@ -353,7 +355,7 @@ begin
 				sseg_1 <= seg(zero);
 				sseg_2 <= seg(zero);
 
-					if (unsigned(drive_timer_cnt_1) > 2070) then
+					if (unsigned(drive_timer_cnt_1) > (2070 + turn_offset)) then
 						if instr then
 							if afsnijden_c then
 								if rechtdoor_c then
@@ -381,7 +383,7 @@ begin
 							when "000" =>
 								robot_direction(vooruit);
 								drive_timer_load_1 <= '1';
-								drive_timer_ttl_1 <= std_logic_vector(to_unsigned(1470,12));
+								drive_timer_ttl_1 <= std_logic_vector(to_unsigned(1470 + turn_offset,12));
 							when "100" |"110" =>
 								robot_direction(bocht_rv);
 							when "001" | "011" =>
@@ -411,48 +413,14 @@ begin
 						next_state <= gestopt;
 				end case;
 
---			when vooruit_chk =>					--for switch
---				robot_direction(vooruit);
---				drive_timer_reset_1 <= '0';
---				drive_time_next <= unsigned(drive_timer_cnt_1);
---				sseg_1 <= seg(zero);
---				sseg_2 <= seg(ff);
---
---				if(unsigned(drive_timer_cnt_1) >=  900) then
---					if mine_c then
---						next_state <= achteruit;
---						send_clear_instr(mijn);
---					else
---						send_clear_instr(geen_mijn);
---						if achteruit_c then
---							next_state <= achteruit;
---						else
---							next_state <= first_part;
---						end if;
---					end if;
---				else
---					case sensors is
---						when "101" | "010" =>
---							robot_direction(vooruit);
---						when "000" =>
---							robot_direction(vooruit);
---						when "100" |"110" =>
---							robot_direction(bocht_rv);
---						when "001" | "011" =>
---							robot_direction(bocht_lv);
---						when others =>
---							next_state <= gestopt;
---					end case;
---				end if;
-
-			when vooruit_chk =>				--with sensor
+			when vooruit_chk =>				--vooruit mijn check
 				robot_direction(vooruit);
 				drive_timer_reset_1 <= '0';
 				drive_time_next <= unsigned(drive_timer_cnt_1);
 				sseg_1 <= seg(zero);
 				sseg_2 <= seg(ff);
 
-				if(unsigned(drive_timer_cnt_1) >=  550) then
+				if(unsigned(drive_timer_cnt_1) >=  (550 + turn_offset)) then
 					send_clear_instr(geen_mijn);
 					if achteruit_c then
 						next_state <= achteruit;
@@ -480,18 +448,21 @@ begin
 					end if;
 				end if;
 --
-			when vooruit_scherp =>								--vooruit timer van sensors over de lijn naar wielen op de lijn
+			when vooruit_scherp =>								--vooruit van sensors over de lijn naar wielen op de lijn
 				robot_direction(vooruit);
 				drive_timer_reset_2 <= '0';
 				sseg_1 <= seg(zero);
 				sseg_2 <= seg(aa);
 
-				if (unsigned(drive_timer_cnt_2) >=  330) then
+				if (unsigned(drive_timer_cnt_2) >=  310) then
 					if linksom_c then
 						next_state <= draai_linksom;
 					elsif rechtsom_c then
 						next_state <= draai_rechtsom;
 					elsif rechtdoor_c then
+						drive_timer_reset_1 <= '0';
+						drive_timer_load_1 <= '1';
+						drive_timer_ttl_1 <= std_logic_vector(to_unsigned(turn_offset,12));
 						if cp_c then
 							send_clear_instr(instr_used);
 							next_state <= van_naar_cp;
@@ -529,7 +500,7 @@ begin
 				sseg_1 <= seg(one);
 				sseg_2 <= seg(zero);
 				
-				if((unsigned(drive_timer_cnt_2)) >= drive_time_reg)then			-- >= drive_time_reg*(8/9)
+				if((unsigned(drive_timer_cnt_2)) >= (drive_time_reg - turn_offset))then	
 					if instr then
 						if linksom_c then
 							next_state <= draai_linksom;
@@ -551,7 +522,7 @@ begin
 				sseg_1 <= seg(one);
 				sseg_2 <= seg(five);
 		
-				if(unsigned(drive_timer_cnt_1) >=  800)then
+				if(unsigned(drive_timer_cnt_1) >=  (800 + turn_offset))then
 					robot_direction(gestopt);
 					if instr then
 						if linksom_c then
@@ -567,7 +538,7 @@ begin
 					else
 						next_state <= wait_for_instr_2;
 					end if;
-				elsif(unsigned(drive_timer_cnt_1) >= 400)then
+				elsif(unsigned(drive_timer_cnt_1) >= (400 + turn_offset))then
 					robot_direction(achteruit);
 				else
 					case sensors is
@@ -583,11 +554,11 @@ begin
 					end case;
 				end if;
 
-			when linksaf =>
-				robot_direction(draai_l);
-				drive_timer_reset_2 <= '0';
-				sseg_1 <= seg(two);
-				sseg_2 <= seg(zero);
+			when linksaf =>									-- naar links afsnijden manouvre
+				robot_direction(draai_l);						-- 1) van de lijn afdraaien 
+				drive_timer_reset_2 <= '0';						-- 2) rechdoor rijden over wit
+				sseg_1 <= seg(two);							-- 3) over de lijn heen rijden
+				sseg_2 <= seg(zero);							-- 4) op de lijn sturen als de sensoren er voorbij zijn
 	
 				if ((unsigned(drive_timer_cnt_2) > 400) and (sensors = "111")) then
 					next_state <= linksaf_pt2;
@@ -623,7 +594,7 @@ begin
 					next_state <= first_part;
 				end if;				
 
-			when rechtsaf =>
+			when rechtsaf =>								-- naar rechts afnijden mouvre zie: linksaf
 				robot_direction(draai_r);
 				drive_timer_reset_2 <= '0';
 				sseg_1 <= seg(three);
@@ -664,9 +635,9 @@ begin
 				end if;
 				
 
-			when draai_linksom =>
-				robot_direction(draai_l);
-				sseg_1 <= seg(four);
+			when draai_linksom =>									--linkom draaien manouvre
+				robot_direction(draai_l);							-- 1) van de huidige lijn afdraaien
+				sseg_1 <= seg(four);								-- 2) tot op de nieuwe lijn sturen
 				sseg_2 <= seg(zero);
 
 					if(sensors = "111") then
@@ -680,6 +651,16 @@ begin
 				sseg_2 <= seg(five);
 
 					if((sensors = "101") or (sensors = "100") or (sensors = "001"))then
+						next_state <= counter_steer;
+					end if;
+
+			when counter_steer =>
+				robot_direction(draai_r);
+				drive_timer_reset_2 <= '0';
+				sseg_1 <= seg(four);
+				sseg_2 <= seg(aa);
+
+					if(unsigned(drive_timer_cnt_2) > 20)then
 						robot_direction(vooruit);
 						if cp_c then
 							send_clear_instr(instr_used);
@@ -692,7 +673,7 @@ begin
 						end if;
 					end if;
 
-			when draai_rechtsom =>
+			when draai_rechtsom =>									--rechtsom draaien manouvre, zie: linksom
 				robot_direction(draai_r);
 				sseg_1 <= seg(five);
 				sseg_2 <= seg(zero);
@@ -707,7 +688,7 @@ begin
 				sseg_1 <= seg(five);
 				sseg_2 <= seg(five);
 
-					if((sensors = "101") or (sensors = "001") or (sensors = "100"))then
+					if((sensors = "101") or (sensors = "001")or (sensors = "100"))then		
 						robot_direction(vooruit);
 						if cp_c then
 							send_clear_instr(instr_used);
@@ -720,7 +701,7 @@ begin
 						end if;
 					end if;
 
-			when omdraaien =>
+			when omdraaien =>									--omdraaien manouvre => 2x rechtsom manouvre
 				robot_direction(draai_r);
 				sseg_1 <= seg(six);
 				sseg_2 <= seg(zero);
@@ -737,111 +718,7 @@ begin
 				if(sensors /= "111") then
 					next_state <= draai_rechtsom;
 				end if;	
-
 		end case;
-
---		if(timer_lcd = "01") then
---			if (unsigned(drive_timer_cnt_1) >=3000) then sseg_3 <= seg(three); sseg_4 <= seg(zero);
---			elsif (unsigned(drive_timer_cnt_1) >=2900) then sseg_3 <= seg(two); sseg_4 <= seg(nine);
---			elsif (unsigned(drive_timer_cnt_1) >=2800) then sseg_3 <= seg(two); sseg_4 <= seg(eight);
---			elsif (unsigned(drive_timer_cnt_1) >=2700) then sseg_3 <= seg(two); sseg_4 <= seg(seven);
---			elsif (unsigned(drive_timer_cnt_1) >=2600) then sseg_3 <= seg(two); sseg_4 <= seg(six);
---			elsif (unsigned(drive_timer_cnt_1) >=2500) then sseg_3 <= seg(two); sseg_4 <= seg(five);
---			elsif (unsigned(drive_timer_cnt_1) >=2400) then sseg_3 <= seg(two); sseg_4 <= seg(four);
---			elsif (unsigned(drive_timer_cnt_1) >=2300) then sseg_3 <= seg(two); sseg_4 <= seg(three);
---			elsif (unsigned(drive_timer_cnt_1) >=2200) then sseg_3 <= seg(two); sseg_4 <= seg(two);
---			elsif (unsigned(drive_timer_cnt_1) >=2100) then sseg_3 <= seg(two); sseg_4 <= seg(one);
---			elsif (unsigned(drive_timer_cnt_1) >=2000) then sseg_3 <= seg(two); sseg_4 <= seg(zero);
---			elsif (unsigned(drive_timer_cnt_1) >=1900) then sseg_3 <= seg(one); sseg_4 <= seg(nine);
---			elsif (unsigned(drive_timer_cnt_1) >=1800) then sseg_3 <= seg(one); sseg_4 <= seg(eight);
---			elsif (unsigned(drive_timer_cnt_1) >=1700) then sseg_3 <= seg(one); sseg_4 <= seg(seven);
---			elsif (unsigned(drive_timer_cnt_1) >=1600) then sseg_3 <= seg(one); sseg_4 <= seg(six);
---			elsif (unsigned(drive_timer_cnt_1) >=1500) then sseg_3 <= seg(one); sseg_4 <= seg(five);
---			elsif (unsigned(drive_timer_cnt_1) >=1400) then sseg_3 <= seg(one); sseg_4 <= seg(four);
---			elsif (unsigned(drive_timer_cnt_1) >=1300) then sseg_3 <= seg(one); sseg_4 <= seg(three);
---			elsif (unsigned(drive_timer_cnt_1) >=1200) then sseg_3 <= seg(one); sseg_4 <= seg(two);
---			elsif (unsigned(drive_timer_cnt_1) >=1100) then  sseg_3 <= seg(one); sseg_4 <= seg(one);
---			elsif (unsigned(drive_timer_cnt_1) >=1000) then sseg_3 <= seg(one); sseg_4 <= seg(zero);
---			elsif (unsigned(drive_timer_cnt_1) >=900) then sseg_3 <= seg(zero); sseg_4 <= seg(nine);
---			elsif (unsigned(drive_timer_cnt_1) >=800) then sseg_3 <= seg(zero); sseg_4 <= seg(eight);
---			elsif (unsigned(drive_timer_cnt_1) >=700) then sseg_3 <= seg(zero); sseg_4 <= seg(seven);
---			elsif (unsigned(drive_timer_cnt_1) >=600) then  sseg_3 <= seg(zero); sseg_4 <= seg(six);
---			elsif (unsigned(drive_timer_cnt_1) >=500) then  sseg_3 <= seg(zero); sseg_4 <= seg(five);
---			elsif (unsigned(drive_timer_cnt_1) >=400) then sseg_3 <= seg(zero); sseg_4 <= seg(four);
---			elsif (unsigned(drive_timer_cnt_1) >=300) then  sseg_3 <= seg(zero); sseg_4 <= seg(three);
---			elsif (unsigned(drive_timer_cnt_1) >=200) then  sseg_3 <= seg(zero); sseg_4 <= seg(two);
---			elsif (unsigned(drive_timer_cnt_1) >=100) then  sseg_3 <= seg(zero); sseg_4 <= seg(one);
---			else sseg_3 <= seg(zero); sseg_4 <= seg(zero);
---			end if;	
---		elsif(timer_lcd = "10") then
---			if (unsigned(drive_timer_cnt_2) >=3000) then sseg_3 <= seg(three); sseg_4 <= seg(zero);
---			elsif (unsigned(drive_timer_cnt_2) >=2900) then sseg_3 <= seg(two); sseg_4 <= seg(nine);
---			elsif (unsigned(drive_timer_cnt_2) >=2800) then sseg_3 <= seg(two); sseg_4 <= seg(eight);
---			elsif (unsigned(drive_timer_cnt_2) >=2700) then sseg_3 <= seg(two); sseg_4 <= seg(seven);
---			elsif (unsigned(drive_timer_cnt_2) >=2600) then sseg_3 <= seg(two); sseg_4 <= seg(six);
---			elsif (unsigned(drive_timer_cnt_2) >=2500) then sseg_3 <= seg(two); sseg_4 <= seg(five);
---			elsif (unsigned(drive_timer_cnt_2) >=2400) then sseg_3 <= seg(two); sseg_4 <= seg(four);
---			elsif (unsigned(drive_timer_cnt_2) >=2300) then sseg_3 <= seg(two); sseg_4 <= seg(three);
---			elsif (unsigned(drive_timer_cnt_2) >=2200) then sseg_3 <= seg(two); sseg_4 <= seg(two);
---			elsif (unsigned(drive_timer_cnt_2) >=2100) then sseg_3 <= seg(two); sseg_4 <= seg(one);
---			elsif (unsigned(drive_timer_cnt_2) >=2000) then sseg_3 <= seg(two); sseg_4 <= seg(zero);
---			elsif (unsigned(drive_timer_cnt_2) >=1900) then sseg_3 <= seg(one); sseg_4 <= seg(nine);
---			elsif (unsigned(drive_timer_cnt_2) >=1800) then sseg_3 <= seg(one); sseg_4 <= seg(eight);
---			elsif (unsigned(drive_timer_cnt_2) >=1700) then sseg_3 <= seg(one); sseg_4 <= seg(seven);
---			elsif (unsigned(drive_timer_cnt_2) >=1600) then sseg_3 <= seg(one); sseg_4 <= seg(six);
---			elsif (unsigned(drive_timer_cnt_2) >=1500) then sseg_3 <= seg(one); sseg_4 <= seg(five);
---			elsif (unsigned(drive_timer_cnt_2) >=1400) then sseg_3 <= seg(one); sseg_4 <= seg(four);
---			elsif (unsigned(drive_timer_cnt_2) >=1300) then sseg_3 <= seg(one); sseg_4 <= seg(three);
---			elsif (unsigned(drive_timer_cnt_2) >=1200) then sseg_3 <= seg(one); sseg_4 <= seg(two);
---			elsif (unsigned(drive_timer_cnt_2) >=1100) then  sseg_3 <= seg(one); sseg_4 <= seg(one);
---			elsif (unsigned(drive_timer_cnt_2) >=1000) then sseg_3 <= seg(one); sseg_4 <= seg(zero);
---			elsif (unsigned(drive_timer_cnt_2) >=900) then sseg_3 <= seg(zero); sseg_4 <= seg(nine);
---			elsif (unsigned(drive_timer_cnt_2) >=800) then sseg_3 <= seg(zero); sseg_4 <= seg(eight);
---			elsif (unsigned(drive_timer_cnt_2) >=700) then sseg_3 <= seg(zero); sseg_4 <= seg(seven);
---			elsif (unsigned(drive_timer_cnt_2) >=600) then  sseg_3 <= seg(zero); sseg_4 <= seg(six);
---			elsif (unsigned(drive_timer_cnt_2) >=500) then  sseg_3 <= seg(zero); sseg_4 <= seg(five);
---			elsif (unsigned(drive_timer_cnt_2) >=400) then sseg_3 <= seg(zero); sseg_4 <= seg(four);
---			elsif (unsigned(drive_timer_cnt_2) >=300) then  sseg_3 <= seg(zero); sseg_4 <= seg(three);
---			elsif (unsigned(drive_timer_cnt_2) >=200) then  sseg_3 <= seg(zero); sseg_4 <= seg(two);
---			elsif (unsigned(drive_timer_cnt_2) >=100) then  sseg_3 <= seg(zero); sseg_4 <= seg(one);
---			else sseg_3 <= seg(zero); sseg_4 <= seg(zero);
---			end if;	
---		else
-			if (unsigned(drive_timer_cnt_2) >=3000) then sseg_3 <= seg(three); sseg_4 <= seg(zero);
-			elsif (drive_time_reg >=2900) then sseg_3 <= seg(two); sseg_4 <= seg(nine);
-			elsif (drive_time_reg >=2800) then sseg_3 <= seg(two); sseg_4 <= seg(eight);
-			elsif (drive_time_reg >=2700) then sseg_3 <= seg(two); sseg_4 <= seg(seven);
-			elsif (drive_time_reg >=2600) then sseg_3 <= seg(two); sseg_4 <= seg(six);
-			elsif (drive_time_reg >=2500) then sseg_3 <= seg(two); sseg_4 <= seg(five);
-			elsif (drive_time_reg >=2400) then sseg_3 <= seg(two); sseg_4 <= seg(four);
-			elsif (drive_time_reg >=2300) then sseg_3 <= seg(two); sseg_4 <= seg(three);
-			elsif (drive_time_reg >=2200) then sseg_3 <= seg(two); sseg_4 <= seg(two);
-			elsif (drive_time_reg >=2100) then sseg_3 <= seg(two); sseg_4 <= seg(one);
-			elsif (drive_time_reg >=2000) then sseg_3 <= seg(two); sseg_4 <= seg(zero);
-			elsif (drive_time_reg >=1900) then sseg_3 <= seg(one); sseg_4 <= seg(nine);
-			elsif (drive_time_reg >=1800) then sseg_3 <= seg(one); sseg_4 <= seg(eight);
-			elsif (drive_time_reg >=1700) then sseg_3 <= seg(one); sseg_4 <= seg(seven);
-			elsif (drive_time_reg >=1600) then sseg_3 <= seg(one); sseg_4 <= seg(six);
-			elsif (drive_time_reg >=1500) then sseg_3 <= seg(one); sseg_4 <= seg(five);
-			elsif (drive_time_reg >=1400) then sseg_3 <= seg(one); sseg_4 <= seg(four);
-			elsif (drive_time_reg >=1300) then sseg_3 <= seg(one); sseg_4 <= seg(three);
-			elsif (drive_time_reg >=1200) then sseg_3 <= seg(one); sseg_4 <= seg(two);
-			elsif (drive_time_reg >=1100) then  sseg_3 <= seg(one); sseg_4 <= seg(one);
-			elsif (drive_time_reg >=1000) then sseg_3 <= seg(one); sseg_4 <= seg(zero);
-			elsif (drive_time_reg >=900) then sseg_3 <= seg(zero); sseg_4 <= seg(nine);
-			elsif (drive_time_reg >=800) then sseg_3 <= seg(zero); sseg_4 <= seg(eight);
-			elsif (drive_time_reg >=700) then sseg_3 <= seg(zero); sseg_4 <= seg(seven);
-			elsif (drive_time_reg >=600) then  sseg_3 <= seg(zero); sseg_4 <= seg(six);
-			elsif (drive_time_reg >=500) then  sseg_3 <= seg(zero); sseg_4 <= seg(five);
-			elsif (drive_time_reg >=400) then sseg_3 <= seg(zero); sseg_4 <= seg(four);
-			elsif (drive_time_reg >=300) then  sseg_3 <= seg(zero); sseg_4 <= seg(three);
-			elsif (drive_time_reg >=200) then  sseg_3 <= seg(zero); sseg_4 <= seg(two);
-			elsif (drive_time_reg >=100) then  sseg_3 <= seg(zero); sseg_4 <= seg(one);
-			else sseg_3 <= seg(zero); sseg_4 <= seg(zero);
-			end if;	
-
---		end if;
-
 	end process;
 
 	seg_1 <= sseg_1;
@@ -850,6 +727,3 @@ begin
 	seg_4 <= sseg_4;
 
 end architecture behavioural;
-
-
-

@@ -1,4 +1,3 @@
-LIBRARY ieee;
 USE ieee.std_logic_1164.all;
 use IEEE.numeric_std.all;
 
@@ -16,13 +15,11 @@ entity FPGA is
 		pwm_l		: out	std_logic;
 		pwm_r		: out	std_logic;
 
-		mine_sw		: in 	std_logic;
 		mine_sensor	: in	std_logic;
 
 		seg		: out	std_logic_vector(7 downto 0);
 		an		: out 	std_logic_vector(3 downto 0);
-		led		: out 	std_logic_vector(7 downto 0)
-		--timer_lcd	: in	std_logic_vector(1 downto 0)		
+		led		: out 	std_logic_vector(7 downto 0)		
 	);
 end entity FPGA;
 
@@ -100,7 +97,6 @@ architecture structural of FPGA is
 		reset_trip_timer	: out	std_logic;
 		hold_trip_timer		: out	std_logic;
 		lcd_select		: out	std_logic
-		--timer_lcd		: in	std_logic_vector(1 downto 0)
 	);
 	end component controller;
 
@@ -177,11 +173,15 @@ architecture structural of FPGA is
 		);
 	end component inputbuffer_mine;
 
-	--for UART1:uart use entity work.uart(structural_save);
 	for UART1:uart use entity work.uart(structural);
+	--for UART1:uart use entity work.uart(structural_save);
+	--for UART1:uart use entity work.uart(structural_save_2);
 
-	for mijn_sensor1:mine_deco use entity work.mine_deco(behav_10n);
-	--for mijn_sensor1:mine_deco use entity work.mine_deco(behav_100n);
+	for controller1:controller use entity work.controller(behavioural);
+
+	for mijn_sensor1:mine_deco use entity work.mine_deco(behav);
+
+	
 
 	signal sensors_thru: std_logic_vector(2 downto 0); 
 
@@ -203,7 +203,7 @@ architecture structural of FPGA is
 	signal drive_timer_reset_2, drive_timer_load_2: std_logic;
 	signal drive_timer_cnt_2, drive_timer_ttl_2: std_logic_vector(11 downto 0);
 
-	signal deco_out, orred_mine, buffered_mine_sensor: std_logic;
+	signal deco_out, buffered_mine_sensor: std_logic;
 
 
 begin
@@ -249,7 +249,7 @@ begin
 							drive_timer_ttl_2	=> drive_timer_ttl_2,
 							drive_timer_cnt_2	=> drive_timer_cnt_2,
 
-							mine		=> orred_mine,
+							mine		=> deco_out,
 
 							seg_1		=> seg_1,
 							seg_2		=> seg_2,
@@ -259,7 +259,6 @@ begin
 							reset_trip_timer	=> reset_trip_timer,
 							hold_trip_timer		=> hold_trip_timer,
 							lcd_select		=> lcd_select
-							--timer_lcd		=> timer_lcd
 					);
 
 	timebase1:	timebase	port map(	clk		=> clk,
@@ -356,8 +355,5 @@ begin
 					);
 
 	led <= instr_in;
-
-	orred_mine <= mine_sw or deco_out;
---	orred_mine <= mine_sw;
 
 end architecture structural;
